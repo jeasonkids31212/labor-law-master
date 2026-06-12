@@ -1,0 +1,16 @@
+{
+  "last_updated": "2026-06-12T07:33:56.683811Z",
+  "total_records": 13,
+  "total_chunks": 1,
+  "chunks": [
+    {
+      "file": "data/chunk_0.json",
+      "count": 13,
+      "categories": {
+        "法條": 5,
+        "函釋": 4,
+        "裁判書": 4
+      }
+    }
+  ]
+}
