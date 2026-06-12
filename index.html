@@ -42,7 +42,7 @@
     <!-- Main Question Box -->
     <main>
       <div class="search-card">
-        <h2 class="search-title">💼 勞動爭議解析(AI法令判斷)</h2>
+        <h2 class="search-title">💼 勞動爭議,AI法令分析</h2>
         <textarea id="question-input" class="search-textarea" placeholder="請輸入您遇到的勞動法令爭議或具體案情... (例如：公司不給加班費並規定遲到要扣雙倍薪水，是否合法？特休沒休完老闆規定要自動失效該怎麼辦？)"></textarea>
         <div class="search-footer">
           <div class="db-status">
@@ -174,7 +174,7 @@
         this.buildIndex();
       }
 
-      // Tokenizer: Unicode Chinese characters + Character 2-grams + Alphabetic tokens
+      // Tokenizer: Unicode Chinese characters + Character 2-grams + Stop words filtering
       tokenize(text) {
         if (!text) return [];
         // Convert to lowercase and replace non-alphanumeric/non-Chinese chars with spaces
@@ -183,6 +183,14 @@
         
         // Split text by space to isolate blocks
         const blocks = cleanText.split(/\s+/);
+        const stopWords = new Set([
+          '是否', '我們', '因為', '所以', '以及', '關於', '如果', '一個', '這個', '那個', 
+          '自己', '有些', '沒有', '可能', '規定', '依法', '根據', '依照', '違反', '請勿', 
+          '不要', '切勿', '對於', '有關', '符合', '之規', '進行', '之處', '之下', '之一', 
+          '之二', '第三', '第四', '第五', '第一', '第二', '以上', '以下', '以前', '以後',
+          '正常', '工作', '時間', '每日', '每小時', '每日每', '延長', '正常工作時間',
+          '之規定', '之處分', '之下', '之日', '之日數', '之人', '之意'
+        ]);
         
         blocks.forEach(block => {
           if (!block) return;
@@ -488,6 +496,31 @@
       }
 
       // Safe JSON parser for Gemini output
+      // Cleans JSON from raw newlines inside string literals
+      function cleanRawJson(rawText) {
+        let inString = false;
+        let escaped = false;
+        let result = "";
+        for (let i = 0; i < rawText.length; i++) {
+          const char = rawText[i];
+          if (escaped) {
+            result += char;
+            escaped = false;
+          } else if (char === '\\') {
+            result += char;
+            escaped = true;
+          } else if (char === '"') {
+            result += char;
+            inString = !inString;
+          } else if ((char === '\n' || char === '\r') && inString) {
+            result += '\\n'; // Convert raw newline inside JSON string value to escaped \n
+          } else {
+            result += char;
+          }
+        }
+        return result;
+      }
+
       function parseGeminiResponse(text) {
         let cleanText = text.trim();
         // Strip markdown code block wrappers
@@ -504,11 +537,14 @@
           cleanText = lines.join("\n").trim();
         }
         
+        // Sanitize raw newlines inside strings
+        cleanText = cleanRawJson(cleanText);
+        
         try {
           return JSON.parse(cleanText);
         } catch (e) {
           console.warn("JSON parsing failed directly. Attempting regex match...", e);
-          const regexMatch = text.match(/\{[\s\S]*\}/);
+          const regexMatch = cleanText.match(/\{[\s\S]*\}/);
           if (regexMatch) {
             try {
               return JSON.parse(regexMatch[0]);
@@ -525,7 +561,7 @@
             law_analysis: text,
             action_suggestions: "請依循基本勞基法程序，並向當地勞工局提出申訴諮詢。",
             dos: ["妥善保存出勤紀錄與對話截圖", "向勞動主管機關申請調解"],
-            donts: ["勿口頭答應拋棄任何加班費或權利項目", "切勿擅自曠職避免遭惡意解雇"]
+            donts: ["勿口頭答應拋棄加班費權利項目", "切勿擅自曠職避免遭惡意解雇"]
           };
         }
       }
