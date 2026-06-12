@@ -1,15 +1,15 @@
 {
-  "last_updated": "2026-06-12T07:33:56.683811Z",
-  "total_records": 13,
+  "last_updated": "2026-06-12T08:04:36.108309Z",
+  "total_records": 16,
   "total_chunks": 1,
   "chunks": [
     {
       "file": "data/chunk_0.json",
-      "count": 13,
+      "count": 16,
       "categories": {
-        "法條": 5,
-        "函釋": 4,
-        "裁判書": 4
+        "法條": 6,
+        "函釋": 5,
+        "裁判書": 5
       }
     }
   ]

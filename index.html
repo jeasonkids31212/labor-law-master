@@ -42,7 +42,7 @@
     <!-- Main Question Box -->
     <main>
       <div class="search-card">
-        <h2 class="search-title">💼 勞動爭議法令分析</h2>
+        <h2 class="search-title">💼 勞動爭議解析(AI法令判斷)</h2>
         <textarea id="question-input" class="search-textarea" placeholder="請輸入您遇到的勞動法令爭議或具體案情... (例如：公司不給加班費並規定遲到要扣雙倍薪水，是否合法？特休沒休完老闆規定要自動失效該怎麼辦？)"></textarea>
         <div class="search-footer">
           <div class="db-status">
@@ -316,14 +316,14 @@
         // Sort by score descending
         scores.sort((a, b) => b.score - a.score);
 
-        // Group into Interpretation (函釋) and Judgment (裁判書) and return topK of each
+        // Group into Interpretation (函釋) and Judgment (裁判書), ignoring zero-score matches
         const interpretations = scores
-          .filter(item => item.doc.type === '函釋')
+          .filter(item => item.doc.type === '函釋' && item.score > 0)
           .slice(0, topK)
           .map(item => item.doc);
 
         const judgments = scores
-          .filter(item => item.doc.type === '裁判書')
+          .filter(item => item.doc.type === '裁判書' && item.score > 0)
           .slice(0, topK)
           .map(item => item.doc);
 
@@ -604,15 +604,19 @@
           
           // Restrict context to first 600 characters per document as requested
           let contextPromptText = "";
-          selectedRefs.forEach((ref, i) => {
-            const slicedContent = ref.content.substring(0, 600);
-            contextPromptText += `[參考文獻 ${i + 1}] (${ref.type})\n標題: ${ref.title}\n內容 (前600字): ${slicedContent}\n\n`;
-          });
+          if (selectedRefs.length === 0) {
+            contextPromptText = "【本機 RAG 檢索參考文獻】：本機資料庫中無直接相關的函釋與裁判書。請依據您的中華民國勞動法令知識，針對問題進行分析與回答。\n\n";
+          } else {
+            selectedRefs.forEach((ref, i) => {
+              const slicedContent = ref.content.substring(0, 600);
+              contextPromptText += `[參考文獻 ${i + 1}] (${ref.type})\n標題: ${ref.title}\n內容 (前600字): ${slicedContent}\n\n`;
+            });
+          }
 
           // Render references locally in accordion immediately
           referencesList.innerHTML = "";
           if (selectedRefs.length === 0) {
-            referencesList.innerHTML = `<div class="ref-item" style="color: var(--text-muted);">本機資料庫未查得直接相關的法令或裁判書。</div>`;
+            referencesList.innerHTML = `<div class="ref-item" style="color: var(--text-muted); padding: 1rem;">本機 RAG 資料庫未找到直接相關的法令、函釋或裁判書。AI 將依據一般勞動法令進行通識性研判。</div>`;
           } else {
             selectedRefs.forEach(ref => {
               const badgeClass = ref.type === '函釋' ? 'badge-interpretation' : 'badge-judgment';
@@ -634,11 +638,11 @@
 
           // 2. Build detailed analysis prompt
           const systemInstruction = 
-            `你是一位台灣勞動法令的王牌大律師，精通中華民國勞動基準法、勞動部行政函釋與民刑事裁判書。\n` +
-            `請根據使用者提出的具體勞動爭議事件，並參考以下檢索出的本機 RAG 文獻，進行深入的法律合理性判定與勝率評估。\n` +
+            `你是一位台灣勞動法令的王牌大律師，精通中華民國勞動基準法、職業安全衛生法、勞動部行政函釋與民刑事裁判書。\n` +
+            `請根據使用者提出的具體勞動爭議事件，並參考以下檢索出的本機 RAG 文獻，進行深入的法律合理性判定與勝率評估。若無直接相關的文獻，請以一般勞動法令與職安法進行專業研判。\n` +
             `你必須完全以繁體中文回答，並且輸出內容必須是嚴格的 JSON 格式，不可以有額外的解釋文字。JSON 格式如下：\n` +
             `{\n` +
-            `  "reasonability": "雇主行為：顯著違法 / 雇主行為：大致合理 / 存在合理爭議空間 / 勞工訴求：具足夠法律依據",\n` +
+            `  "reasonability": "核心研判結論，格式應為：『行為判定：具體違法或合理說明（違反法規條號）』。例如：『雇主未提供合格護目鏡違反職安法第6條』，或『雇主未依法發給加班費違反勞基法第24條』，或『勞工請求特休未休工資具法律依據』。切勿使用籠統或模糊的句子，必須明確寫出行為主體、具體行為與相關法規。",\n` +
             `  "win_rate": "例如：90% 或 35%",\n` +
             `  "verdict_reason": "一句話總結判定原因，應簡潔有力、高質感且專業。",\n` +
             `  "law_analysis": "包含法律依據分析，指出違反何法條，論述邏輯嚴謹。可使用 **粗體** 強調重點。",\n` +
