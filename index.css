@@ -289,6 +289,19 @@ header {
   gap: 0.5rem;
   font-size: 0.85rem;
   color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  transition: var(--transition-smooth);
+  user-select: none;
+}
+
+.db-status:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--accent-gold);
+  color: var(--text-primary);
 }
 
 .status-dot {
