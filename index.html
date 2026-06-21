@@ -67,7 +67,29 @@
       <!-- Result Container (Top-down UI Layout) -->
       <div id="results-section">
         
-        <!-- 1. AI 核心研判 Banner -->
+        <!-- 1. 王牌大律師直白回覆 Card (人性化直接回覆，在最上方) -->
+        <div class="analysis-card" id="conversational-card" style="border-left: 6px solid var(--accent-gold); background: linear-gradient(135deg, hsla(43, 96%, 58%, 0.05) 0%, var(--bg-card) 100%);">
+          <h3 class="section-title" style="color: var(--accent-gold); border-bottom: 1px solid hsla(43, 96%, 58%, 0.15); margin-bottom: 1rem; padding-bottom: 0.5rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold); vertical-align: middle; margin-right: 0.5rem;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            王牌大律師直白回覆
+          </h3>
+          <div id="result-conversational-answer" class="markdown-content" style="font-size: 1.15rem; color: var(--text-primary); line-height: 1.8;">
+            直白回覆載入中...
+          </div>
+        </div>
+
+        <!-- 2. 本案參考法令與文獻 Card (直接在直白回覆下方顯示參考法令) -->
+        <div class="analysis-card" id="references-card">
+          <h3 class="section-title">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            本案檢索參考法令與文獻
+          </h3>
+          <div id="references-list" class="ref-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- 3. AI 核心研判 Banner (既有格式保留在下方) -->
         <div class="analysis-banner">
           <div class="banner-header">
             <div class="banner-title-group">
@@ -86,18 +108,7 @@
           </div>
         </div>
 
-        <!-- 1.5 王牌大律師直白回覆 Card -->
-        <div class="analysis-card" id="conversational-card" style="border-left: 6px solid var(--accent-gold); background: linear-gradient(135deg, hsla(43, 96%, 58%, 0.05) 0%, var(--bg-card) 100%);">
-          <h3 class="section-title" style="color: var(--accent-gold); border-bottom: 1px solid hsla(43, 96%, 58%, 0.15); margin-bottom: 1rem; padding-bottom: 0.5rem;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold); vertical-align: middle; margin-right: 0.5rem;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            王牌大律師直白回覆
-          </h3>
-          <div id="result-conversational-answer" class="markdown-content" style="font-size: 1.1rem; color: var(--text-primary); line-height: 1.8;">
-            直白回覆載入中...
-          </div>
-        </div>
-
-        <!-- 2. 法律分析與建議 Card -->
+        <!-- 4. 法律分析與建議 Card (既有格式保留在下方) -->
         <div class="analysis-card">
           <div class="card-section">
             <h3 class="section-title">
@@ -120,7 +131,7 @@
           </div>
         </div>
 
-        <!-- 3. 行動紅綠燈 (Do's & Don'ts) -->
+        <!-- 5. 行動紅綠燈 (Do's & Don'ts) (既有格式保留在下方) -->
         <div class="traffic-light-grid">
           
           <!-- Do's (Green) -->
@@ -145,19 +156,6 @@
             </ul>
           </div>
 
-        </div>
-
-        <!-- 4. 參考文獻 (Collapsible Accordion) -->
-        <div class="accordion">
-          <button id="accordion-btn" class="accordion-trigger">
-            <span>📚 本機 RAG 檢索參考文獻 (包含適用法條、函釋與裁判書)</span>
-            <svg class="accordion-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div id="accordion-content" class="accordion-content">
-            <div id="references-list" class="ref-list">
-              <!-- Dynamically populated -->
-            </div>
-          </div>
         </div>
 
       </div>
@@ -379,9 +377,6 @@
       const resActionSuggestions = document.getElementById("result-action-suggestions");
       const resDosList = document.getElementById("result-dos-list");
       const resDontsList = document.getElementById("result-donts-list");
-      
-      const accordionBtn = document.getElementById("accordion-btn");
-      const accordionContent = document.getElementById("accordion-content");
       const referencesList = document.getElementById("references-list");
 
       // Search instance
@@ -483,11 +478,7 @@
 
       loadRAGDatabase();
 
-      // Accordion toggle
-      accordionBtn.addEventListener("click", () => {
-        accordionBtn.classList.toggle("active");
-        accordionContent.classList.toggle("active");
-      });
+      // References are displayed directly as a card
 
       // Simple markdown parser to handle Bold (**) and bullet points
       function formatMarkdownText(text) {
@@ -708,7 +699,7 @@
             `請根據使用者提出的具體勞動爭議事件，並參考以下檢索出的本機 RAG 文獻，進行深入的法律合理性判定與勝率評估。若無直接相關的文獻，請以一般勞動法令與職安法進行專業研判。\n` +
             `你必須完全以繁體中文回答，並且輸出內容必須是嚴格的 JSON 格式，不可以有額外的解釋文字。JSON 格式如下：\n` +
             `{\n` +
-            `  "conversational_answer": "給使用者的口語化直白回覆。請直接針對使用者的問題進行人性化、溫暖、且白話直接的回答（問什麼就答什麼，說話口吻像一個貼心、懂法律的專業律師朋友，不要做制式化的分析，直接給予明快的人性化解答）。",\n` +
+            `  "conversational_answer": "給使用者的口語化直白回覆。請直接且人性化地回答使用者的問題，『問什麼就回答什麼』。口吻應像一位貼心、溫暖、懂法律的專業律師朋友。千萬不要制式化，也不要進行任何多餘的分析（如條列式法律條文或分析步驟等，這些資訊會呈現在下方的其他區塊），直接以最白話、溫柔且明確的方式回答他的疑問即可。",\n` +
             `  "reasonability": "核心研判結論，格式應為：『行為判定：具體違法或合理說明（違反法規條號）』。例如：『雇主未提供合格護目鏡違反職安法第6條』，或『雇主未依法發給加班費違反勞基法第24條』，或『勞工請求特休未休工資具法律依據』。切勿使用籠統或模糊的句子，必須明確寫出行為主體、具體行為與相關法規。",\n` +
             `  "win_rate": "例如：90% 或 35%",\n` +
             `  "verdict_reason": "一句話總結判定原因，應簡潔有力、高質感且專業。",\n` +
