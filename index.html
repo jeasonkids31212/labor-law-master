@@ -226,6 +226,17 @@
           <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">無歷史對話</div>
         </div>
       </div>
+
+      <!-- Export & Import Backup Buttons -->
+      <div class="sidebar-footer" style="margin-top: auto; border-top: 1px solid var(--border-color); padding-top: 1rem; display: flex; gap: 0.5rem;">
+        <button id="export-history-btn" class="sidebar-action-btn" style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.82rem; color: var(--text-secondary); background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.25rem; font-family: inherit;" title="匯出所有歷史與已釘選對話為備份檔案">
+          <span>📥 匯出紀錄</span>
+        </button>
+        <button id="import-history-btn" class="sidebar-action-btn" style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.82rem; color: var(--text-secondary); background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.25rem; font-family: inherit;" title="自備份檔案匯入對話紀錄">
+          <span>📤 匯入紀錄</span>
+        </button>
+        <input type="file" id="import-history-file" accept=".json" style="display: none;" />
+      </div>
     </aside>
 
     <!-- Right Main Content Area -->
@@ -1369,19 +1380,65 @@
           .replace(/`([^`]+)`/g, "<code>$1</code>");
           
         const lines = formatted.split("\n");
-        let inList = false;
         let html = "";
+        let inList = false;
+        let inTable = false;
+        let tableHeaders = [];
+        let tableRows = [];
         
         lines.forEach(line => {
           const trimmed = line.trim();
-          if (!trimmed) {
+          
+          // Handle Subheadings (### or ####)
+          if (trimmed.startsWith("### ")) {
+            closeContainers();
+            html += `<h3 style="font-size: 1.08rem; color: var(--accent-gold); margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 700;">${trimmed.substring(4)}</h3>`;
+            return;
+          }
+          if (trimmed.startsWith("#### ")) {
+            closeContainers();
+            html += `<h4 style="font-size: 0.98rem; color: var(--text-primary); margin-top: 0.8rem; margin-bottom: 0.4rem; font-weight: 600;">${trimmed.substring(5)}</h4>`;
+            return;
+          }
+
+          // Handle Blockquotes (>)
+          if (trimmed.startsWith("&gt; ")) {
+            closeContainers();
+            html += `<blockquote style="border-left: 3px solid var(--border-focus); padding-left: 0.75rem; color: var(--text-muted); font-style: italic; margin-bottom: 0.75rem; margin-left: 0; padding-top: 0.2rem; padding-bottom: 0.2rem; background: rgba(255,255,255,0.01); border-radius: 0 4px 4px 0;">${trimmed.substring(5)}</blockquote>`;
+            return;
+          }
+
+          // Handle Tables (| col 1 | col 2 |)
+          if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
             if (inList) {
               html += "</ul>";
               inList = false;
             }
+            
+            // Skip layout lines e.g. |---|---| or |:---|:---|
+            if (trimmed.includes("---") || trimmed.includes("===")) {
+              return;
+            }
+
+            const cells = trimmed.split("|").map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+            
+            if (!inTable) {
+              inTable = true;
+              tableHeaders = cells;
+            } else {
+              tableRows.push(cells);
+            }
             return;
+          } else {
+            if (inTable) {
+              html += renderHtmlTable(tableHeaders, tableRows);
+              inTable = false;
+              tableHeaders = [];
+              tableRows = [];
+            }
           }
           
+          // Handle Lists (- or *)
           if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
             if (!inList) {
               html += "<ul style='margin-bottom: 0.75rem; padding-left: 1.25rem; list-style-type: disc;'>";
@@ -1393,14 +1450,49 @@
               html += "</ul>";
               inList = false;
             }
-            html += `<p style='margin-bottom: 0.75rem;'>${trimmed}</p>`;
+            if (trimmed) {
+              html += `<p style='margin-bottom: 0.75rem;'>${trimmed}</p>`;
+            }
           }
         });
         
-        if (inList) {
-          html += "</ul>";
+        closeContainers();
+        
+        function closeContainers() {
+          if (inList) {
+            html += "</ul>";
+            inList = false;
+          }
+          if (inTable) {
+            html += renderHtmlTable(tableHeaders, tableRows);
+            inTable = false;
+            tableHeaders = [];
+            tableRows = [];
+          }
         }
         
+        function renderHtmlTable(headers, rows) {
+          let tHtml = `<div style="overflow-x: auto; margin-bottom: 1rem; border: 1px solid var(--border-color); border-radius: 8px; width: 100%;"><table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left;">`;
+          tHtml += `<thead style="background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-color);"><tr>`;
+          headers.forEach(h => {
+            tHtml += `<th style="padding: 0.6rem 0.75rem; font-weight: 600; color: var(--text-primary); border-right: 1px solid var(--border-color);">${h}</th>`;
+          });
+          tHtml += `</tr></thead><tbody>`;
+          
+          rows.forEach((row, rowIndex) => {
+            const rowBg = rowIndex % 2 === 1 ? "rgba(255,255,255,0.01)" : "transparent";
+            tHtml += `<tr style="background: ${rowBg}; border-bottom: 1px solid rgba(255,255,255,0.05);">`;
+            headers.forEach((h, colIndex) => {
+              const cellVal = row[colIndex] || "";
+              tHtml += `<td style="padding: 0.6rem 0.75rem; color: var(--text-secondary); border-right: 1px solid rgba(255,255,255,0.05);">${cellVal}</td>`;
+            });
+            tHtml += `</tr>`;
+          });
+          
+          tHtml += `</tbody></table></div>`;
+          return tHtml;
+        }
+
         return html;
       }
 
@@ -1411,6 +1503,31 @@
           null,
           []
         );
+        
+        // Append quick question template cards
+        const templatesDiv = document.createElement("div");
+        templatesDiv.id = "quick-templates-container";
+        templatesDiv.style = "display: flex; flex-wrap: wrap; gap: 0.75rem; margin-left: 2.5rem; margin-top: 0.5rem; margin-bottom: 1.5rem; animation: fadeIn 0.4s ease-out;";
+        templatesDiv.innerHTML = `
+          <button class="template-capsule" style="background: hsla(215, 25%, 38%, 0.12); border: 1px solid var(--border-color); border-radius: 20px; padding: 0.45rem 0.9rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; transition: var(--transition-smooth); font-family: inherit;" onmouseover="this.style.borderColor='var(--accent-gold)'; this.style.color='var(--text-primary)'" onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'" data-prompt="公司加班沒給加班費是否合法？老闆規定加班一律只能補休，不給薪水是否合法？">🕒 加班費與補休爭議</button>
+          <button class="template-capsule" style="background: hsla(215, 25%, 38%, 0.12); border: 1px solid var(--border-color); border-radius: 20px; padding: 0.45rem 0.9rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; transition: var(--transition-smooth); font-family: inherit;" onmouseover="this.style.borderColor='var(--accent-gold)'; this.style.color='var(--text-primary)'" onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'" data-prompt="公司規定遲到一分鐘要扣工資一千塊，並直接從薪水扣除，這違反勞基法第22條全額給付規定嗎？">⚠️ 遲到扣薪合理性</button>
+          <button class="template-capsule" style="background: hsla(215, 25%, 38%, 0.12); border: 1px solid var(--border-color); border-radius: 20px; padding: 0.45rem 0.9rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; transition: var(--transition-smooth); font-family: inherit;" onmouseover="this.style.borderColor='var(--accent-gold)'; this.style.color='var(--text-primary)'" onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'" data-prompt="特別休假沒休完，老闆規定每年年底自動失效，這是否違法？應該如何折算工資給勞工？">📅 特休未休折算工資</button>
+          <button class="template-capsule" style="background: hsla(215, 25%, 38%, 0.12); border: 1px solid var(--border-color); border-radius: 20px; padding: 0.45rem 0.9rem; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; transition: var(--transition-smooth); font-family: inherit;" onmouseover="this.style.borderColor='var(--accent-gold)'; this.style.color='var(--text-primary)'" onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-secondary)'" data-prompt="在上班通勤途中騎車發生車禍骨折受傷，這算職業災害嗎？休養期間雇主應該給付什麼工資補償？">🩹 上班車禍與職災補償</button>
+        `;
+        chatMessages.appendChild(templatesDiv);
+        bindTemplateListeners();
+      }
+
+      function bindTemplateListeners() {
+        const capsules = document.querySelectorAll(".template-capsule");
+        capsules.forEach(capsule => {
+          capsule.addEventListener("click", () => {
+            chatInput.value = capsule.getAttribute("data-prompt");
+            const container = document.getElementById("quick-templates-container");
+            if (container) container.remove();
+            handleSend();
+          });
+        });
       }
       
       showWelcomeBubble();
@@ -1552,6 +1669,64 @@
 
       // Reset / Restart Q&A
       resetChatBtn.addEventListener("click", resetChat);
+
+      // --- Export Backup Chat History ---
+      const exportHistoryBtn = document.getElementById("export-history-btn");
+      exportHistoryBtn.addEventListener("click", () => {
+        if (sessions.length === 0) {
+          alert("目前尚無任何歷史諮詢紀錄可供匯出。");
+          return;
+        }
+        try {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sessions));
+          const downloadAnchor = document.createElement("a");
+          downloadAnchor.setAttribute("href", dataStr);
+          downloadAnchor.setAttribute("download", "mol_law_chats_backup_" + Date.now() + ".json");
+          document.body.appendChild(downloadAnchor);
+          downloadAnchor.click();
+          downloadAnchor.remove();
+        } catch (e) {
+          alert("備份檔匯出失敗: " + e.message);
+        }
+      });
+
+      // --- Import Backup Chat History ---
+      const importHistoryBtn = document.getElementById("import-history-btn");
+      const importHistoryFile = document.getElementById("import-history-file");
+
+      importHistoryBtn.addEventListener("click", () => {
+        importHistoryFile.click();
+      });
+
+      importHistoryFile.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const imported = JSON.parse(evt.target.result);
+            if (Array.isArray(imported)) {
+              const merged = [...imported];
+              sessions.forEach(localSession => {
+                if (!merged.some(m => m.id === localSession.id)) {
+                  merged.push(localSession);
+                }
+              });
+              sessions = merged;
+              localStorage.setItem("mol_law_sessions", JSON.stringify(sessions));
+              renderSidebar();
+              alert("成功匯入對話紀錄！");
+              importHistoryFile.value = "";
+            } else {
+              alert("匯入失敗：備份檔案結構不符 (必須是 JSON 陣列)。");
+            }
+          } catch (err) {
+            alert("讀取備份檔案出錯，請確認是否為有效的 JSON 格式。\n錯誤: " + err.message);
+          }
+        };
+        reader.readAsText(file);
+      });
     });
   </script>
 </body>
