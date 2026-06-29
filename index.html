@@ -6,6 +6,19 @@
   <title>AI 【勞動法令】王牌大律師 - RAG 本機語意檢索對話系統</title>
   <meta name="description" content="AI 勞動法令大師是基於 RAG 本機語意檢索與 Gemini 模型的靜態單網頁應用，提供高質感的法律合理性判定、法條分析、行動紅綠燈與司法文獻參考。">
   <link rel="stylesheet" href="index.css">
+  <style>
+    @keyframes pulse-red {
+      0% { box-shadow: 0 0 0 0 rgba(230, 84, 60, 0.4); }
+      70% { box-shadow: 0 0 0 12px rgba(230, 84, 60, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(230, 84, 60, 0); }
+    }
+    .recording-active {
+      background: rgba(230, 84, 60, 0.2) !important;
+      border-color: var(--error-red) !important;
+      color: var(--error-red) !important;
+      animation: pulse-red 1.5s infinite;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -63,6 +76,9 @@
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
           <div style="display: flex; gap: 0.75rem; align-items: flex-end;">
             <textarea id="chat-input" class="search-textarea" style="margin-bottom: 0; min-height: 60px; height: 60px; padding: 0.75rem 1rem; resize: none; flex: 1;" placeholder="請輸入您遇到的勞動爭議問題或具體案情... (例如：公司不給加班費，並規定遲到扣雙倍薪水，是否合法？)"></textarea>
+            <button id="chat-voice-btn" class="btn-icon" style="height: 60px; width: 60px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: var(--transition-smooth);" title="語音輸入 (說完按停止按鈕將自動送出)">
+              <svg class="mic-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+            </button>
             <button id="chat-send-btn" class="btn-primary" style="height: 60px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-shrink: 0;">
               <span>送出問題</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -664,7 +680,96 @@
       const chatMessages = document.getElementById("chat-messages");
       const chatInput = document.getElementById("chat-input");
       const chatSendBtn = document.getElementById("chat-send-btn");
+      const chatVoiceBtn = document.getElementById("chat-voice-btn");
       const resetChatBtn = document.getElementById("reset-chat-btn");
+
+      // --- Voice Recognition (Speech-to-Text) ---
+      let recognition = null;
+      let isRecording = false;
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'zh-TW';
+
+        recognition.onstart = () => {
+          isRecording = true;
+          chatVoiceBtn.classList.add("recording-active");
+          chatInput.placeholder = "🎤 正在語音辨識中，請說話... (說完再按一下麥克風即停止並自動分析)";
+          chatInput.focus();
+        };
+
+        recognition.onresult = (event) => {
+          let finalTranscript = "";
+          let interimTranscript = "";
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+
+          if (finalTranscript || interimTranscript) {
+            chatInput.value = finalTranscript + interimTranscript;
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.error("語音辨識錯誤:", event.error);
+          if (event.error === 'not-allowed') {
+            alert("麥克風權限已被拒絕。請開啟瀏覽器麥克風權限後重試。");
+          } else {
+            alert("語音輸入發生錯誤: " + event.error);
+          }
+          stopRecording();
+        };
+
+        recognition.onend = () => {
+          isRecording = false;
+          chatVoiceBtn.classList.remove("recording-active");
+          chatInput.placeholder = "請輸入您遇到的勞動爭議問題或具體案情... (例如：公司不給加班費，並規定遲到扣雙倍薪水，是否合法？)";
+          
+          // Auto-submit if there is transcribed text when recording ends
+          const text = chatInput.value.trim();
+          if (text) {
+            handleSend();
+          }
+        };
+      } else {
+        chatVoiceBtn.style.display = "none";
+        console.warn("瀏覽器不支援 Web Speech API (語音輸入)");
+      }
+
+      function startRecording() {
+        if (!recognition) return;
+        chatInput.value = ""; // Clear input for fresh start
+        try {
+          recognition.start();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      function stopRecording() {
+        if (!recognition) return;
+        try {
+          recognition.stop();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      chatVoiceBtn.addEventListener("click", () => {
+        if (!isRecording) {
+          startRecording();
+        } else {
+          stopRecording();
+        }
+      });
 
       function appendUserBubble(text) {
         const bubble = document.createElement("div");
