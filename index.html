@@ -7,6 +7,171 @@
   <meta name="description" content="AI 勞動法令大師是基於 RAG 本機語意檢索與 Gemini 模型的靜態單網頁應用，提供高質感的法律合理性判定、法條分析、行動紅綠燈與司法文獻參考。">
   <link rel="stylesheet" href="index.css">
   <style>
+    /* App Layout */
+    .app-layout {
+      display: flex;
+      min-height: 100vh;
+      width: 100vw;
+      overflow-x: hidden;
+      background-color: var(--bg-primary);
+    }
+
+    .sidebar {
+      width: 280px;
+      background-color: var(--bg-secondary);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      padding: 1.25rem 1rem;
+      transition: var(--transition-smooth);
+      flex-shrink: 0;
+      overflow-y: hidden;
+    }
+
+    .sidebar.collapsed {
+      width: 0;
+      padding-left: 0;
+      padding-right: 0;
+      overflow: hidden;
+      border-right: none;
+    }
+
+    .main-content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    /* Sidebar Components */
+    .btn-new-chat {
+      width: 100%;
+      background: transparent;
+      border: 1px dashed var(--accent-gold);
+      color: var(--accent-gold);
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.92rem;
+      font-family: inherit;
+    }
+
+    .btn-new-chat:hover {
+      background: hsla(43, 96%, 58%, 0.05);
+      box-shadow: var(--shadow-glow);
+      border-style: solid;
+    }
+
+    .sidebar-section {
+      margin-bottom: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .sidebar-section-title {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.6rem;
+      font-weight: 700;
+      padding-left: 0.5rem;
+    }
+
+    .sidebar-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      user-select: none;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.01);
+    }
+
+    .sidebar-item:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-primary);
+    }
+
+    .sidebar-item.active {
+      background: hsla(215, 25%, 38%, 0.25);
+      border-color: var(--border-color);
+      color: var(--accent-gold);
+      font-weight: 600;
+    }
+
+    .sidebar-item-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      margin-right: 0.5rem;
+      text-align: left;
+    }
+
+    .sidebar-item-actions {
+      display: flex;
+      gap: 0.25rem;
+      opacity: 0;
+      transition: var(--transition-smooth);
+    }
+
+    .sidebar-item:hover .sidebar-item-actions {
+      opacity: 1;
+    }
+
+    .sidebar-action-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0.2rem;
+      border-radius: 4px;
+      transition: var(--transition-smooth);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .sidebar-action-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .sidebar-action-btn.pin-btn:hover {
+      color: var(--accent-gold);
+    }
+
+    .sidebar-action-btn.delete-btn:hover {
+      color: var(--error-red);
+    }
+
+    /* Pulsating microphone recording state */
     @keyframes pulse-red {
       0% { box-shadow: 0 0 0 0 rgba(230, 84, 60, 0.4); }
       70% { box-shadow: 0 0 0 12px rgba(230, 84, 60, 0); }
@@ -18,153 +183,203 @@
       color: var(--error-red) !important;
       animation: pulse-red 1.5s infinite;
     }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        z-index: 1000;
+        box-shadow: var(--shadow-lg);
+      }
+      .sidebar.collapsed {
+        transform: translateX(-100%);
+        width: 280px;
+        padding: 1.25rem 1rem;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- Header -->
-    <header>
-      <div class="logo-group">
-        <div class="logo-icon">⚖️</div>
-        <div class="logo-text">
-          <h1>AI 【勞動爭議】王牌大律師</h1>
-          <span>RAG Law Advisor</span>
+  <div class="app-layout">
+    <!-- Left Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <button id="new-chat-btn" class="btn-new-chat">
+          <span>➕ 新建對話</span>
+        </button>
+      </div>
+      
+      <!-- Pinned Chats Section -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">📌 已釘選對話</div>
+        <div id="pinned-chats-list" class="sidebar-list">
+          <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">無釘選對話</div>
         </div>
       </div>
-      <button id="settings-toggle-btn" class="btn-icon" title="設定 Gemini API Key">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
-    </header>
-
-    <!-- API Settings Panel -->
-    <div id="settings-panel" class="settings-panel">
-      <div class="settings-header">
-        <h3 class="settings-title">🔑 設定 Gemini API 金鑰</h3>
-        <button id="settings-close-btn" class="settings-close">&times;</button>
+      
+      <!-- Recent Chats Section -->
+      <div class="sidebar-section" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+        <div class="sidebar-section-title">💬 歷史對話</div>
+        <div id="recent-chats-list" class="sidebar-list" style="flex: 1; overflow-y: auto;">
+          <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">無歷史對話</div>
+        </div>
       </div>
-      <div class="input-group">
-        <input type="password" id="api-key-input" class="input-text" placeholder="請輸入您的 Gemini API Key (例如：AIzaSy...)">
-        <button id="api-key-save-btn" class="btn-primary">儲存金鑰</button>
-      </div>
-      <p class="settings-help">
-        * 您的 API Key 將安全地保存在本機瀏覽器的 <code>localStorage</code> 中，絕不傳送到外部伺服器。<br>
-        * 若無 Key，您可以前往 <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer">Google AI Studio</a> 免費申請。
-      </p>
-    </div>
+    </aside>
 
-    <!-- Main Area -->
-    <main>
-      <!-- Chat Container (Always visible, ChatGPT layout) -->
-      <div id="chat-container" class="analysis-card" style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 2rem; border-left: 6px solid var(--accent-gold); box-shadow: var(--shadow-lg);">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 0.25rem;">
-          <h3 class="section-title" style="margin-bottom: 0; border-bottom: none; padding-bottom: 0; display: flex; align-items: center; gap: 0.5rem;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold);"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            AI 【勞動爭議】王牌大律師 線上對答諮詢
-          </h3>
-          <button id="reset-chat-btn" class="btn-icon" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; border-radius: 8px; display: flex; align-items: center; gap: 0.3rem;" title="重置對話並開啟新案諮詢">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.64A9 9 0 0 0 20.49 15"/></svg>
-            <span>重新諮詢</span>
+    <!-- Right Main Content Area -->
+    <div class="main-content">
+      <div class="container">
+        <!-- Header -->
+        <header>
+          <div class="logo-group">
+            <!-- Sidebar Hamburger Toggle -->
+            <button id="sidebar-toggle-btn" class="btn-icon" style="padding: 0.4rem; margin-right: 0.5rem; display: flex; border-radius: 8px;" title="收合/展開側邊欄">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div class="logo-icon">⚖️</div>
+            <div class="logo-text">
+              <h1>AI 【勞動爭議】王牌大律師</h1>
+              <span>RAG Law Advisor</span>
+            </div>
+          </div>
+          <button id="settings-toggle-btn" class="btn-icon" title="設定 Gemini API Key">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
+        </header>
+
+        <!-- API Settings Panel -->
+        <div id="settings-panel" class="settings-panel">
+          <div class="settings-header">
+            <h3 class="settings-title">🔑 設定 Gemini API 金鑰</h3>
+            <button id="settings-close-btn" class="settings-close">&times;</button>
+          </div>
+          <div class="input-group">
+            <input type="password" id="api-key-input" class="input-text" placeholder="請輸入您的 Gemini API Key (例如：AIzaSy...)">
+            <button id="api-key-save-btn" class="btn-primary">儲存金鑰</button>
+          </div>
+          <p class="settings-help">
+            * 您的 API Key 將安全地保存在本機瀏覽器的 <code>localStorage</code> 中，絕不傳送到外部伺服器。<br>
+            * 若無 Key，您可以前往 <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer">Google AI Studio</a> 免費申請。
+          </p>
         </div>
+
+        <!-- Main Area -->
+        <main>
+          <!-- Chat Container (Always visible, ChatGPT layout) -->
+          <div id="chat-container" class="analysis-card" style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 2rem; border-left: 6px solid var(--accent-gold); box-shadow: var(--shadow-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 0.25rem;">
+              <h3 class="section-title" style="margin-bottom: 0; border-bottom: none; padding-bottom: 0; display: flex; align-items: center; gap: 0.5rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold);"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                AI 【勞動爭議】王牌大律師 線上對答諮詢
+              </h3>
+              <button id="reset-chat-btn" class="btn-icon" style="padding: 0.4rem 0.8rem; font-size: 0.82rem; border-radius: 8px; display: flex; align-items: center; gap: 0.3rem;" title="重置對話並開啟新案諮詢">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.64A9 9 0 0 0 20.49 15"/></svg>
+                <span>重新諮詢</span>
+              </button>
+            </div>
+            
+            <!-- Chat Messages Thread -->
+            <div id="chat-messages" style="display: flex; flex-direction: column; gap: 1.25rem; max-height: 520px; overflow-y: auto; padding-right: 0.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color); margin-bottom: 0.5rem;">
+              <!-- Welcome message and chat bubbles -->
+            </div>
+
+            <!-- Chat Input Area (Consolidated input box at the bottom) -->
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <div style="display: flex; gap: 0.75rem; align-items: flex-end;">
+                <textarea id="chat-input" class="search-textarea" style="margin-bottom: 0; min-height: 60px; height: 60px; padding: 0.75rem 1rem; resize: none; flex: 1;" placeholder="請輸入您遇到的勞動爭議問題或具體案情... (例如：公司不給加班費，並規定遲到扣雙倍薪水，是否合法？)"></textarea>
+                <button id="chat-voice-btn" class="btn-icon" style="height: 60px; width: 60px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: var(--transition-smooth);" title="語音輸入 (說完按停止按鈕將自動送出)">
+                  <svg class="mic-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                </button>
+                <button id="chat-send-btn" class="btn-primary" style="height: 60px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-shrink: 0;">
+                  <span>送出問題</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div id="db-status-container" class="db-status" title="點擊展開/收合本機已載入的法令文獻庫" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;">
+                  <span id="db-status-dot" class="status-dot"></span>
+                  <span id="db-status-text">資料庫載入中...</span>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">
+                  * 支援 Shift+Enter 換行，直接發送請按 Enter。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div id="loading-container" class="loading-container" style="margin-top: 1rem; margin-bottom: 1.5rem;">
+            <div class="skeleton-card" style="padding: 1.5rem;">
+              <div class="skeleton-line title" style="width: 30%;"></div>
+              <div class="skeleton-line body-1"></div>
+              <div class="skeleton-line body-2"></div>
+            </div>
+          </div>
+
+          <!-- Database Contents Viewer (Toggled by clicking the status capsule) -->
+          <div id="db-viewer-card" class="analysis-card" style="display: none; border-left: 6px solid var(--accent-gold); margin-bottom: 2.5rem; animation: fadeIn 0.4s ease-out;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+              <h3 class="section-title" style="margin-bottom: 0; border-bottom: none; padding-bottom: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold);"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                本機資料庫已載入法令參考資料 (共 <span id="db-viewer-count">0</span> 筆最新資料)
+              </h3>
+              <button id="db-viewer-close-btn" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.5rem; transition: var(--transition-smooth);" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">&times;</button>
+            </div>
+            <div id="db-viewer-list" class="ref-list" style="max-height: 400px; overflow-y: auto; padding-right: 0.5rem; gap: 1rem;">
+              <!-- Dynamically populated with all loaded references -->
+            </div>
+          </div>
+
+          <!-- Static Reference Library Card (📚 最新載入法令與函釋派令庫, 3 columns) -->
+          <div class="analysis-card" id="knowledge-base-card" style="margin-top: 2.5rem; margin-bottom: 2.5rem; border-top: 4px solid var(--border-color);">
+            <h3 class="section-title" style="font-size: 1.25rem; display: flex; align-items: center; gap: 0.6rem;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold);"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              本機 RAG 載入最新法令與函釋令派庫 (本機已載入 <span id="kb-total-count">0</span> 筆重要文獻資料)
+            </h3>
+            
+            <div class="kb-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
+              <!-- Column 1: Laws -->
+              <div class="kb-column" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column;">
+                <h4 style="color: hsl(150, 100%, 60%); border-bottom: 2px solid hsla(150, 100%, 60%, 0.2); padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
+                  <span>⚖️</span> 最新重要勞動法規 (勞基法/職安法)
+                </h4>
+                <div id="kb-laws-list" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 420px; overflow-y: auto; padding-right: 0.25rem;">
+                  <div style="font-size: 0.9rem; color: var(--text-muted); text-align: center; padding: 1rem;">資料載入中...</div>
+                </div>
+              </div>
+              
+              <!-- Column 2: Interpretations -->
+              <div class="kb-column" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column;">
+                <h4 style="color: var(--accent-gold); border-bottom: 2px solid hsla(43, 96%, 58%, 0.2); padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
+                  <span>📜</span> 最新行政函釋與派令 (勞動部函釋)
+                </h4>
+                <div id="kb-interpretations-list" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 420px; overflow-y: auto; padding-right: 0.25rem;">
+                  <div style="font-size: 0.9rem; color: var(--text-muted); text-align: center; padding: 1rem;">資料載入中...</div>
+                </div>
+              </div>
+
+              <!-- Column 3: Judgments -->
+              <div class="kb-column" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column;">
+                <h4 style="color: hsl(200, 100%, 60%); border-bottom: 2px solid hsla(200, 100%, 60%, 0.2); padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
+                  <span>🏛️</span> 最新法院實務裁判 (裁判書)
+                </h4>
+                <div id="kb-judgments-list" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 420px; overflow-y: auto; padding-right: 0.25rem;">
+                  <div style="font-size: 0.9rem; color: var(--text-muted); text-align: center; padding: 1rem;">資料載入中...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
         
-        <!-- Chat Messages Thread -->
-        <div id="chat-messages" style="display: flex; flex-direction: column; gap: 1.25rem; max-height: 520px; overflow-y: auto; padding-right: 0.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color); margin-bottom: 0.5rem;">
-          <!-- Welcome message and chat bubbles -->
-        </div>
-
-        <!-- Chat Input Area (Consolidated input box at the bottom) -->
-        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-          <div style="display: flex; gap: 0.75rem; align-items: flex-end;">
-            <textarea id="chat-input" class="search-textarea" style="margin-bottom: 0; min-height: 60px; height: 60px; padding: 0.75rem 1rem; resize: none; flex: 1;" placeholder="請輸入您遇到的勞動爭議問題或具體案情... (例如：公司不給加班費，並規定遲到扣雙倍薪水，是否合法？)"></textarea>
-            <button id="chat-voice-btn" class="btn-icon" style="height: 60px; width: 60px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: var(--transition-smooth);" title="語音輸入 (說完按停止按鈕將自動送出)">
-              <svg class="mic-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-            </button>
-            <button id="chat-send-btn" class="btn-primary" style="height: 60px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-shrink: 0;">
-              <span>送出問題</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div id="db-status-container" class="db-status" title="點擊展開/收合本機已載入的法令文獻庫" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;">
-              <span id="db-status-dot" class="status-dot"></span>
-              <span id="db-status-text">資料庫載入中...</span>
-            </div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">
-              * 支援 Shift+Enter 換行，直接發送請按 Enter。
-            </div>
-          </div>
-        </div>
+        <!-- Footer -->
+        <footer>
+          <p>© 2026 AI 勞動法令王牌大律師. 法令來源: <a href="https://laws.mol.gov.tw/" target="_blank">勞動部勞動法令查詢系統</a> | <a href="https://www.mol.gov.tw/" target="_blank">中華民國勞動部</a> | <a href="https://labor-elearning.mol.gov.tw/" target="_blank">勞動電子學習網</a></p>
+          <p style="margin-top: 0.5rem; opacity: 0.6;">RAG static database powered by GitHub Pages.</p>
+        </footer>
       </div>
-
-      <!-- Loading State -->
-      <div id="loading-container" class="loading-container" style="margin-top: 1rem; margin-bottom: 1.5rem;">
-        <div class="skeleton-card" style="padding: 1.5rem;">
-          <div class="skeleton-line title" style="width: 30%;"></div>
-          <div class="skeleton-line body-1"></div>
-          <div class="skeleton-line body-2"></div>
-        </div>
-      </div>
-
-      <!-- Database Contents Viewer (Toggled by clicking the status capsule) -->
-      <div id="db-viewer-card" class="analysis-card" style="display: none; border-left: 6px solid var(--accent-gold); margin-bottom: 2.5rem; animation: fadeIn 0.4s ease-out;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
-          <h3 class="section-title" style="margin-bottom: 0; border-bottom: none; padding-bottom: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold);"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            本機資料庫已載入法令參考資料 (共 <span id="db-viewer-count">0</span> 筆最新資料)
-          </h3>
-          <button id="db-viewer-close-btn" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.5rem; transition: var(--transition-smooth);" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'">&times;</button>
-        </div>
-        <div id="db-viewer-list" class="ref-list" style="max-height: 400px; overflow-y: auto; padding-right: 0.5rem; gap: 1rem;">
-          <!-- Dynamically populated with all loaded references -->
-        </div>
-      </div>
-
-      <!-- Static Reference Library Card (📚 最新載入法令與函釋派令庫, 3 columns) -->
-      <div class="analysis-card" id="knowledge-base-card" style="margin-top: 2.5rem; margin-bottom: 2.5rem; border-top: 4px solid var(--border-color);">
-        <h3 class="section-title" style="font-size: 1.25rem; display: flex; align-items: center; gap: 0.6rem;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-gold);"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          本機 RAG 載入最新法令與函釋令派庫 (本機已載入 <span id="kb-total-count">0</span> 筆重要文獻資料)
-        </h3>
-        
-        <div class="kb-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
-          <!-- Column 1: Laws -->
-          <div class="kb-column" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column;">
-            <h4 style="color: hsl(150, 100%, 60%); border-bottom: 2px solid hsla(150, 100%, 60%, 0.2); padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
-              <span>⚖️</span> 最新重要勞動法規 (勞基法/職安法)
-            </h4>
-            <div id="kb-laws-list" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 420px; overflow-y: auto; padding-right: 0.25rem;">
-              <div style="font-size: 0.9rem; color: var(--text-muted); text-align: center; padding: 1rem;">資料載入中...</div>
-            </div>
-          </div>
-          
-          <!-- Column 2: Interpretations -->
-          <div class="kb-column" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column;">
-            <h4 style="color: var(--accent-gold); border-bottom: 2px solid hsla(43, 96%, 58%, 0.2); padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
-              <span>📜</span> 最新行政函釋與派令 (勞動部函釋)
-            </h4>
-            <div id="kb-interpretations-list" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 420px; overflow-y: auto; padding-right: 0.25rem;">
-              <div style="font-size: 0.9rem; color: var(--text-muted); text-align: center; padding: 1rem;">資料載入中...</div>
-            </div>
-          </div>
-
-          <!-- Column 3: Judgments -->
-          <div class="kb-column" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column;">
-            <h4 style="color: hsl(200, 100%, 60%); border-bottom: 2px solid hsla(200, 100%, 60%, 0.2); padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; font-size: 1.05rem;">
-              <span>🏛️</span> 最新法院實務裁判 (裁判書)
-            </h4>
-            <div id="kb-judgments-list" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 420px; overflow-y: auto; padding-right: 0.25rem;">
-              <div style="font-size: 0.9rem; color: var(--text-muted); text-align: center; padding: 1rem;">資料載入中...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
-    
-    <!-- Footer -->
-    <footer>
-      <p>© 2026 AI 勞動法令王牌大律師. 法令來源: <a href="https://laws.mol.gov.tw/" target="_blank">勞動部勞動法令查詢系統</a> | <a href="https://www.mol.gov.tw/" target="_blank">中華民國勞動部</a> | <a href="https://labor-elearning.mol.gov.tw/" target="_blank">勞動電子學習網</a></p>
-      <p style="margin-top: 0.5rem; opacity: 0.6;">RAG static database powered by GitHub Pages.</p>
-    </footer>
+    </div>
   </div>
 
   <script>
@@ -182,7 +397,6 @@
         this.buildIndex();
       }
 
-      // Tokenizer: Unicode Chinese characters + Character 2-grams + Stop words filtering
       tokenize(text) {
         if (!text) return [];
         const cleanText = text.toLowerCase().replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ');
@@ -226,7 +440,6 @@
 
         const df = {};
 
-        // Calculate term frequency per document and term occurrence in docs
         this.documents.forEach(doc => {
           const tokens = this.tokenize(doc.title + " " + doc.content);
           const uniqueTokens = new Set(tokens);
@@ -237,12 +450,10 @@
           });
         });
 
-        // Calculate IDF
         for (const token in df) {
           this.idf[token] = Math.log(1 + (N - df[token] + 0.5) / (df[token] + 0.5));
         }
 
-        // Build document tf-idf vectors
         this.documents.forEach(doc => {
           const tokens = this.tokenize(doc.title + " " + doc.content);
           const tf = {};
@@ -291,7 +502,6 @@
           return { laws: [], interpretations: [], judgments: [] };
         }
 
-        // Cosine similarity
         const scores = [];
         this.documents.forEach(doc => {
           const docVecInfo = this.docVectors[doc.id];
@@ -308,10 +518,8 @@
           scores.push({ doc: doc, score: score });
         });
 
-        // Sort descending
         scores.sort((a, b) => b.score - a.score);
 
-        // Separate and slice by categories
         const laws = scores
           .filter(item => item.doc.type === '法條' && item.score > 0)
           .slice(0, topK)
@@ -357,7 +565,6 @@
         dbStatusDot.classList.add("active");
         dbStatusText.textContent = "資料庫載入中，API金鑰已配置";
       } else {
-        // Show settings panel immediately if no API key is set
         settingsPanel.classList.add("active");
         dbStatusText.textContent = "請設定您的 Gemini API 金鑰";
       }
@@ -412,14 +619,12 @@
         try {
           dbStatusDot.className = "status-dot loading";
           
-          // Fetch manifest
           const manifestRes = await fetch("data/manifest.json");
           if (!manifestRes.ok) {
             throw new Error("無法讀取 data/manifest.json，請確認是否已執行 update_data.py");
           }
           const manifest = await manifestRes.json();
           
-          // Asynchronously load all chunks
           const chunkPromises = manifest.chunks.map(async (chunkInfo) => {
             const chunkRes = await fetch(chunkInfo.file);
             if (!chunkRes.ok) {
@@ -429,8 +634,6 @@
           });
           
           const chunksData = await Promise.all(chunkPromises);
-          
-          // Merge all chunk arrays
           const allDocs = chunksData.flat();
           
           searchEngine.setDocuments(allDocs);
@@ -438,7 +641,6 @@
           console.log("RAG Database successfully loaded. Total documents: ", allDocs.length);
           updateStatus();
           
-          // Populate the bottom Reference Library
           renderKnowledgeBase(allDocs);
         } catch (e) {
           console.error("Database load error: ", e);
@@ -449,7 +651,6 @@
 
       loadRAGDatabase();
 
-      // Render static Reference Library columns at the bottom of the page
       function renderKnowledgeBase(allDocs) {
         const kbTotalCount = document.getElementById("kb-total-count");
         const kbLawsList = document.getElementById("kb-laws-list");
@@ -503,7 +704,6 @@
         if (jgCount === 0) kbJudgmentsList.innerHTML = `<div style="font-size: 0.85rem; color: var(--text-muted); padding: 1rem; text-align: center;">暫無收錄司法裁判</div>`;
       }
 
-      // Database Viewer logic to display all entries in detail
       const dbViewerCard = document.getElementById("db-viewer-card");
       const dbViewerCloseBtn = document.getElementById("db-viewer-close-btn");
       const dbViewerList = document.getElementById("db-viewer-list");
@@ -556,7 +756,6 @@
         });
       }
 
-      // Safe JSON parser for Gemini output
       function cleanRawJson(rawText) {
         let inString = false;
         let escaped = false;
@@ -624,7 +823,6 @@
         }
       }
 
-      // --- Model Fallback Execution ---
       const models = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
       
       async function callGeminiWithFallback(apiKey, promptOrContents) {
@@ -683,25 +881,193 @@
       const chatVoiceBtn = document.getElementById("chat-voice-btn");
       const resetChatBtn = document.getElementById("reset-chat-btn");
 
+      // --- ChatGPT Sidebar Session Memory ---
+      let sessions = JSON.parse(localStorage.getItem("mol_law_sessions")) || [];
+      let activeSessionId = null;
+
+      const sidebarToggleBtn = document.getElementById("sidebar-toggle-btn");
+      const sidebar = document.getElementById("sidebar");
+      const newChatBtn = document.getElementById("new-chat-btn");
+      const pinnedChatsList = document.getElementById("pinned-chats-list");
+      const recentChatsList = document.getElementById("recent-chats-list");
+
+      // Sidebar Toggle Collapse
+      const isCollapsed = localStorage.getItem("sidebar_collapsed") === "true";
+      if (isCollapsed) {
+        sidebar.classList.add("collapsed");
+      }
+
+      sidebarToggleBtn.addEventListener("click", () => {
+        sidebar.classList.toggle("collapsed");
+        localStorage.setItem("sidebar_collapsed", sidebar.classList.contains("collapsed"));
+      });
+
+      newChatBtn.addEventListener("click", resetChat);
+
+      function renderSidebar() {
+        pinnedChatsList.innerHTML = "";
+        recentChatsList.innerHTML = "";
+
+        sessions.forEach(session => {
+          const item = document.createElement("div");
+          item.className = "sidebar-item";
+          if (session.id === activeSessionId) item.classList.add("active");
+
+          item.innerHTML = `
+            <span class="sidebar-item-title">${session.title}</span>
+            <div class="sidebar-item-actions">
+              <button class="sidebar-action-btn pin-btn" title="${session.isPinned ? '取消釘選' : '釘選對話'}">
+                ${session.isPinned ? '📍' : '📌'}
+              </button>
+              <button class="sidebar-action-btn delete-btn" title="刪除對話">🗑️</button>
+            </div>
+          `;
+
+          // Switch session on title click
+          item.querySelector(".sidebar-item-title").addEventListener("click", () => {
+            loadSession(session.id);
+          });
+
+          // Toggle Pin
+          item.querySelector(".pin-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
+            togglePinSession(session.id);
+          });
+
+          // Delete Session
+          item.querySelector(".delete-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteSession(session.id);
+          });
+
+          if (session.isPinned) {
+            pinnedChatsList.appendChild(item);
+          } else {
+            recentChatsList.appendChild(item);
+          }
+        });
+
+        if (pinnedChatsList.children.length === 0) {
+          pinnedChatsList.innerHTML = `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">無釘選對話</div>`;
+        }
+        if (recentChatsList.children.length === 0) {
+          recentChatsList.innerHTML = `<div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">無歷史對話</div>`;
+        }
+      }
+
+      function loadSession(id) {
+        activeSessionId = id;
+        const session = sessions.find(s => s.id === id);
+        if (!session) return;
+
+        conversationHistory = session.conversationHistory || [];
+        accumulatedReferences = session.accumulatedReferences || [];
+
+        // Clear dialogue area
+        chatMessages.innerHTML = "";
+
+        // Re-populate all bubbles from session history
+        if (conversationHistory.length === 0) {
+          showWelcomeBubble();
+        } else {
+          for (let i = 0; i < conversationHistory.length; i++) {
+            const turn = conversationHistory[i];
+            const text = turn.parts[0].text;
+            
+            if (turn.role === "user") {
+              // Extract the user's original query text from the RAG prompt wrapper
+              let originalQuestion = text;
+              if (text.includes("【使用者諮詢問題】：")) {
+                originalQuestion = text.split("【使用者諮詢問題】：\n")[1].split("\n\n請開始法律分析")[0];
+              } else if (text.includes("【使用者追問】：")) {
+                originalQuestion = text.split("【使用者追問】：\n")[1].split("\n\n請結合先前對話")[0];
+              }
+              appendUserBubble(originalQuestion);
+            } else if (turn.role === "model") {
+              const analysisData = parseGeminiResponse(text);
+              
+              // Extract RAG references specific to this model response turn
+              const prevUserTurnText = conversationHistory[i - 1]?.parts[0]?.text || "";
+              const matchedRefs = [];
+              accumulatedReferences.forEach(ref => {
+                if (prevUserTurnText.includes(`標題: ${ref.title}`)) {
+                  matchedRefs.push(ref);
+                }
+              });
+              
+              appendAiBubble(analysisData.conversational_answer, analysisData, matchedRefs);
+            }
+          }
+        }
+
+        renderSidebar();
+      }
+
+      function togglePinSession(id) {
+        const session = sessions.find(s => s.id === id);
+        if (session) {
+          session.isPinned = !session.isPinned;
+          // Sort so pinned are preserved at their order
+          localStorage.setItem("mol_law_sessions", JSON.stringify(sessions));
+          renderSidebar();
+        }
+      }
+
+      function deleteSession(id) {
+        if (confirm("您確定要刪除這筆歷史對話嗎？")) {
+          sessions = sessions.filter(s => s.id !== id);
+          localStorage.setItem("mol_law_sessions", JSON.stringify(sessions));
+          if (activeSessionId === id) {
+            resetChat();
+          } else {
+            renderSidebar();
+          }
+        }
+      }
+
+      function saveCurrentSession() {
+        if (!activeSessionId) return;
+        const session = sessions.find(s => s.id === activeSessionId);
+        if (session) {
+          session.conversationHistory = conversationHistory;
+          session.accumulatedReferences = accumulatedReferences;
+          localStorage.setItem("mol_law_sessions", JSON.stringify(sessions));
+        }
+      }
+
+      function resetChat() {
+        activeSessionId = null;
+        conversationHistory = [];
+        accumulatedReferences = [];
+        chatMessages.innerHTML = "";
+        chatInput.value = "";
+        showWelcomeBubble();
+        renderSidebar();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      // Initialize Sidebar
+      renderSidebar();
+
       // --- Voice Recognition (Speech-to-Text) ---
-      let recognition = null;
+      let voiceRecognition = null;
       let isRecording = false;
 
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'zh-TW';
+        voiceRecognition = new SpeechRecognition();
+        voiceRecognition.continuous = true;
+        voiceRecognition.interimResults = true;
+        voiceRecognition.lang = 'zh-TW';
 
-        recognition.onstart = () => {
+        voiceRecognition.onstart = () => {
           isRecording = true;
           chatVoiceBtn.classList.add("recording-active");
           chatInput.placeholder = "🎤 正在語音辨識中，請說話... (說完再按一下麥克風即停止並自動分析)";
           chatInput.focus();
         };
 
-        recognition.onresult = (event) => {
+        voiceRecognition.onresult = (event) => {
           let finalTranscript = "";
           let interimTranscript = "";
 
@@ -718,7 +1084,7 @@
           }
         };
 
-        recognition.onerror = (event) => {
+        voiceRecognition.onerror = (event) => {
           console.error("語音辨識錯誤:", event.error);
           if (event.error === 'not-allowed') {
             alert("麥克風權限已被拒絕。請開啟瀏覽器麥克風權限後重試。");
@@ -728,12 +1094,11 @@
           stopRecording();
         };
 
-        recognition.onend = () => {
+        voiceRecognition.onend = () => {
           isRecording = false;
           chatVoiceBtn.classList.remove("recording-active");
           chatInput.placeholder = "請輸入您遇到的勞動爭議問題或具體案情... (例如：公司不給加班費，並規定遲到扣雙倍薪水，是否合法？)";
           
-          // Auto-submit if there is transcribed text when recording ends
           const text = chatInput.value.trim();
           if (text) {
             handleSend();
@@ -745,19 +1110,19 @@
       }
 
       function startRecording() {
-        if (!recognition) return;
-        chatInput.value = ""; // Clear input for fresh start
+        if (!voiceRecognition) return;
+        chatInput.value = ""; 
         try {
-          recognition.start();
+          voiceRecognition.start();
         } catch (e) {
           console.error(e);
         }
       }
 
       function stopRecording() {
-        if (!recognition) return;
+        if (!voiceRecognition) return;
         try {
-          recognition.stop();
+          voiceRecognition.stop();
         } catch (e) {
           console.error(e);
         }
@@ -899,15 +1264,15 @@
           `;
           reportDetails.appendChild(lawSec);
 
-          const sugSec = document.createElement("div");
-          sugSec.innerHTML = `
+          const sigSec = document.createElement("div");
+          sigSec.innerHTML = `
             <h4 style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.4rem; font-weight: 600;">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
               具體行動建議
             </h4>
             <div style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.55; padding-left: 0.25rem;">${formatMarkdownText(analysisData.action_suggestions)}</div>
           `;
-          reportDetails.appendChild(sugSec);
+          reportDetails.appendChild(sigSec);
 
           const lightsGrid = document.createElement("div");
           lightsGrid.style = "display: grid; grid-template-columns: 1fr; gap: 0.75rem;";
@@ -993,7 +1358,6 @@
         }
       }
 
-      // Improved Markdown parser to support lists properly
       function formatMarkdownText(text) {
         if (!text) return "";
         let formatted = text
@@ -1040,7 +1404,6 @@
         return html;
       }
 
-      // Render welcome bubble immediately on load
       function showWelcomeBubble() {
         appendAiBubble(
           "您好！我是您的 **AI 勞動法令王牌大律師**。不論您是遇到了加班費爭議、特別休假折算問題、非自願離職與資遣費賠償，或是職災補償與安全防護具爭議，我都可以為您提供專業的法律合理性研判、法理分析與行動建議。\n\n" +
@@ -1063,15 +1426,34 @@
           return;
         }
 
-        // Disable input
+        // Disable inputs
         chatInput.disabled = true;
         chatSendBtn.disabled = true;
 
-        // Render user bubble, clear input box
+        // Render user bubble immediately
         appendUserBubble(question);
         chatInput.value = "";
 
-        // Show typing indicator bubble
+        // If this is the first turn of a new session, initialize the session
+        if (activeSessionId === null) {
+          const newId = Date.now().toString();
+          // Create session title based on question snippet
+          const newTitle = question.substring(0, 12) + (question.length > 12 ? "..." : "");
+          const newSession = {
+            id: newId,
+            title: newTitle,
+            conversationHistory: [],
+            accumulatedReferences: [],
+            isPinned: false,
+            timestamp: Date.now()
+          };
+          sessions.unshift(newSession);
+          activeSessionId = newId;
+          localStorage.setItem("mol_law_sessions", JSON.stringify(sessions));
+          renderSidebar();
+        }
+
+        // Show typing indicator
         showTypingIndicator();
 
         try {
@@ -1079,14 +1461,14 @@
           const { laws, interpretations, judgments } = searchEngine.search(question, 2);
           const selectedRefs = [...laws, ...interpretations, ...judgments];
           
-          // Accumulate references for metadata
+          // Accumulate references in the current session
           selectedRefs.forEach(ref => {
             if (!accumulatedReferences.some(r => r.id === ref.id)) {
               accumulatedReferences.push(ref);
             }
           });
 
-          // Slice references content to 600 chars
+          // Slice references content to 600 chars to save token count
           let contextPromptText = "";
           if (selectedRefs.length === 0) {
             contextPromptText = "【本機 RAG 檢索參考文獻】：針對本次問題，本機資料庫中無直接相關的法條、函釋與裁判書。\n\n";
@@ -1115,14 +1497,12 @@
 
           let turnPrompt = "";
           if (conversationHistory.length === 0) {
-            // First turn
             turnPrompt = 
               `${systemInstruction}\n` +
               `【本機 RAG 檢索參考文獻（限制前600字）】：\n${contextPromptText}\n` +
               `【使用者諮詢問題】：\n${question}\n\n` +
               `請開始法律分析，僅回傳符合上述結構的 JSON 物件：`;
           } else {
-            // Follow-up turn
             turnPrompt = 
               `${systemInstruction}\n` +
               `【本機 RAG 新檢索參考文獻（限制前600字）】：\n${contextPromptText}\n` +
@@ -1130,22 +1510,25 @@
               `請結合先前的對話歷史與本次檢索文獻，繼續進行法律分析，僅回傳符合上述結構的 JSON 物件：`;
           }
 
-          // Add user turn to history
+          // Add user turn to conversation history
           conversationHistory.push({ role: "user", parts: [{ text: turnPrompt }] });
 
-          // 3. Call Gemini
+          // Call Gemini
           const result = await callGeminiWithFallback(apiKey, conversationHistory);
           console.log("成功呼叫模型:", result.model);
 
-          // 4. Parse response
+          // Parse JSON output
           const analysisData = parseGeminiResponse(result.text);
 
-          // Remove typing indicator & render AI response bubble
+          // Remove typing indicator & render AI bubble
           removeTypingIndicator();
           appendAiBubble(analysisData.conversational_answer || "無直白回覆內容。", analysisData, selectedRefs);
 
-          // Save model response to history
+          // Add model response to conversation history
           conversationHistory.push({ role: "model", parts: [{ text: result.text }] });
+
+          // Save session history and references persistently
+          saveCurrentSession();
 
         } catch (error) {
           console.error(error);
@@ -1160,7 +1543,6 @@
 
       chatSendBtn.addEventListener("click", handleSend);
 
-      // Support Enter key to send (and Shift+Enter for newline)
       chatInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -1168,15 +1550,8 @@
         }
       });
 
-      // --- Reset Chat ---
-      resetChatBtn.addEventListener("click", () => {
-        conversationHistory = [];
-        accumulatedReferences = [];
-        chatMessages.innerHTML = "";
-        chatInput.value = "";
-        showWelcomeBubble();
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      });
+      // Reset / Restart Q&A
+      resetChatBtn.addEventListener("click", resetChat);
     });
   </script>
 </body>
