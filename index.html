@@ -6,6 +6,9 @@
   <title>AI 【勞動法令】王牌大律師 - RAG 本機語意檢索對話系統</title>
   <meta name="description" content="AI 勞動法令大師是基於 RAG 本機語意檢索與 Gemini 模型的靜態單網頁應用，提供高質感的法律合理性判定、法條分析、行動紅綠燈與司法文獻參考。">
   <link rel="stylesheet" href="index.css">
+  <!-- Client-side Document Extractors (Zero-server) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
   <style>
     /* App Layout */
     .app-layout {
@@ -298,7 +301,20 @@
 
             <!-- Chat Input Area (Consolidated input box at the bottom) -->
             <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <!-- Attachment Preview Container -->
+              <div id="attachment-preview-container" style="display: none; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.85rem; width: fit-content; max-width: 100%; animation: fadeIn 0.2s ease-out;">
+                <span id="attachment-preview-icon">📄</span>
+                <span id="attachment-preview-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; color: var(--text-primary); font-weight: 500;">檔案名稱.pdf</span>
+                <button id="attachment-clear-btn" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem; line-height: 1; transition: var(--transition-smooth); padding: 0 0.25rem;" onmouseover="this.style.color='var(--error-red)'" onmouseout="this.style.color='var(--text-muted)'">&times;</button>
+              </div>
+
               <div style="display: flex; gap: 0.75rem; align-items: flex-end;">
+                <!-- File Attachment Button -->
+                <button id="chat-file-btn" class="btn-icon" style="height: 60px; width: 60px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: var(--transition-smooth);" title="上傳檔案 (支援 TXT, PDF, Word, PNG, JPG)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+                <input type="file" id="chat-file-input" style="display: none;" accept=".txt,.csv,.md,.json,.pdf,.docx,.png,.jpg,.jpeg" />
+
                 <textarea id="chat-input" class="search-textarea" style="margin-bottom: 0; min-height: 60px; height: 60px; padding: 0.75rem 1rem; resize: none; flex: 1;" placeholder="請輸入您遇到的勞動爭議問題或具體案情... (例如：公司不給加班費，並規定遲到扣雙倍薪水，是否合法？)"></textarea>
                 <button id="chat-voice-btn" class="btn-icon" style="height: 60px; width: 60px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: var(--transition-smooth);" title="語音輸入 (說完按停止按鈕將自動送出)">
                   <svg class="mic-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
@@ -842,7 +858,22 @@
         if (typeof promptOrContents === "string") {
           contentsArray = [{ role: "user", parts: [{ text: promptOrContents }] }];
         } else {
-          contentsArray = promptOrContents;
+          // Sanitize payload: strip out custom fields like 'attachment' and build parts correctly
+          contentsArray = promptOrContents.map(turn => ({
+            role: turn.role,
+            parts: turn.parts.map(part => {
+              const p = {};
+              if (part.text) {
+                p.text = part.text;
+              } else if (part.inlineData) {
+                p.inlineData = {
+                  mimeType: part.inlineData.mimeType,
+                  data: part.inlineData.data
+                };
+              }
+              return p;
+            })
+          }));
         }
 
         for (const model of models) {
@@ -891,6 +922,158 @@
       const chatSendBtn = document.getElementById("chat-send-btn");
       const chatVoiceBtn = document.getElementById("chat-voice-btn");
       const resetChatBtn = document.getElementById("reset-chat-btn");
+
+      // --- File Attachment Selectors & Setup ---
+      const chatFileBtn = document.getElementById("chat-file-btn");
+      const chatFileInput = document.getElementById("chat-file-input");
+      const attachmentPreviewContainer = document.getElementById("attachment-preview-container");
+      const attachmentPreviewIcon = document.getElementById("attachment-preview-icon");
+      const attachmentPreviewName = document.getElementById("attachment-preview-name");
+      const attachmentClearBtn = document.getElementById("attachment-clear-btn");
+      
+      let attachedFile = null; // { name, type, size, content, base64 }
+
+      // Setup pdfjs worker src
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+
+      chatFileBtn.addEventListener("click", () => {
+        chatFileInput.click();
+      });
+
+      attachmentClearBtn.addEventListener("click", () => {
+        clearAttachment();
+      });
+
+      function clearAttachment() {
+        attachedFile = null;
+        chatFileInput.value = "";
+        attachmentPreviewContainer.style.display = "none";
+      }
+
+      chatFileInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Size check: 1MB limit for images, 2MB for docs to protect local storage quota
+        if (file.size > 2 * 1024 * 1024) {
+          alert("檔案大小超過 2MB 限制，請選擇較小的檔案。");
+          chatFileInput.value = "";
+          return;
+        }
+        if (file.type.startsWith("image/") && file.size > 1 * 1024 * 1024) {
+          alert("圖片檔案大小超過 1MB 限制，請選擇較小的圖片。");
+          chatFileInput.value = "";
+          return;
+        }
+
+        attachedFile = {
+          name: file.name,
+          type: file.type,
+          size: file.size
+        };
+
+        // Render preview capsule
+        attachmentPreviewName.textContent = file.name;
+        attachmentPreviewContainer.style.display = "flex";
+
+        try {
+          if (file.type.startsWith("image/")) {
+            attachmentPreviewIcon.textContent = "🖼️";
+            const base64 = await readFileAsBase64(file);
+            attachedFile.base64 = base64;
+          } else if (file.name.endsWith(".pdf")) {
+            attachmentPreviewIcon.textContent = "📄";
+            attachmentPreviewName.textContent = file.name + " (解析中...)";
+            attachedFile.content = await extractTextFromPDF(file);
+            attachmentPreviewName.textContent = file.name;
+          } else if (file.name.endsWith(".docx")) {
+            attachmentPreviewIcon.textContent = "📝";
+            attachmentPreviewName.textContent = file.name + " (解析中...)";
+            attachedFile.content = await extractTextFromDocx(file);
+            attachmentPreviewName.textContent = file.name;
+          } else {
+            attachmentPreviewIcon.textContent = "📎";
+            attachedFile.content = await readFileAsText(file);
+          }
+        } catch (err) {
+          console.error("檔案讀取失敗:", err);
+          alert("檔案解析失敗: " + err.message);
+          clearAttachment();
+        }
+      });
+
+      function readFileAsText(file) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (evt) => resolve(evt.target.result);
+          reader.onerror = () => resolve("");
+          reader.readAsText(file);
+        });
+      }
+
+      function readFileAsBase64(file) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            const dataUrl = evt.target.result;
+            const base64 = dataUrl.split(",")[1];
+            resolve(base64);
+          };
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function extractTextFromPDF(file) {
+        if (!window.pdfjsLib) {
+          alert("PDF 載入模組尚未就緒，請稍後重試。");
+          return "";
+        }
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            try {
+              const arrayBuffer = evt.target.result;
+              const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+              let fullText = "";
+              for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(" ");
+                fullText += `[第 ${i} 頁]\n${pageText}\n\n`;
+              }
+              resolve(fullText);
+            } catch (err) {
+              console.error("PDF 解析出錯:", err);
+              resolve("[PDF 內容提取失敗]");
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        });
+      }
+
+      function extractTextFromDocx(file) {
+        if (!window.mammoth) {
+          alert("Word 載入模組尚未就緒，請稍後重試。");
+          return "";
+        }
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            try {
+              const arrayBuffer = evt.target.result;
+              const result = await window.mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+              resolve(result.value);
+            } catch (err) {
+              console.error("Word 解析出錯:", err);
+              resolve("[Word 內容提取失敗]");
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        });
+      }
 
       // --- ChatGPT Sidebar Session Memory ---
       let sessions = JSON.parse(localStorage.getItem("mol_law_sessions")) || [];
@@ -993,7 +1176,7 @@
               } else if (text.includes("【使用者追問】：")) {
                 originalQuestion = text.split("【使用者追問】：\n")[1].split("\n\n請結合先前對話")[0];
               }
-              appendUserBubble(originalQuestion);
+              appendUserBubble(originalQuestion, turn.attachment);
             } else if (turn.role === "model") {
               const analysisData = parseGeminiResponse(text);
               
@@ -1147,13 +1330,41 @@
         }
       });
 
-      function appendUserBubble(text) {
+      function appendUserBubble(text, attachment) {
         const bubble = document.createElement("div");
         bubble.className = "chat-bubble user-bubble";
-        bubble.style = "display: flex; gap: 0.75rem; justify-content: flex-end; align-self: flex-end; max-width: 85%; margin-bottom: 0.75rem; margin-left: auto; animation: fadeIn 0.3s ease-out;";
+        bubble.style = "display: flex; gap: 0.75rem; justify-content: flex-end; align-self: flex-end; max-width: 85%; margin-bottom: 0.75rem; margin-left: auto; animation: fadeIn 0.3s ease-out; flex-direction: column;";
+        
+        let attachmentHtml = "";
+        if (attachment) {
+          if (attachment.type.startsWith("image/")) {
+            attachmentHtml = `
+              <div style="margin-top: 0.5rem; max-width: 200px; border-radius: 8px; border: 1px solid var(--border-color); overflow: hidden; background: rgba(0,0,0,0.25); align-self: flex-end;">
+                <img src="data:${attachment.type};base64,${attachment.base64}" style="width: 100%; height: auto; display: block;" />
+                <div style="font-size: 0.72rem; color: var(--text-muted); padding: 0.25rem 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;">🖼️ ${attachment.name}</div>
+              </div>
+            `;
+          } else {
+            let docIcon = "📄";
+            if (attachment.name.endsWith(".docx")) docIcon = "📝";
+            attachmentHtml = `
+              <div style="margin-top: 0.5rem; padding: 0.4rem 0.6rem; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.25); font-size: 0.8rem; display: flex; align-items: center; gap: 0.35rem; width: fit-content; align-self: flex-end;">
+                <span>${docIcon}</span>
+                <span style="color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;">${attachment.name}</span>
+                <span style="font-size: 0.68rem; color: var(--text-muted);">(${(attachment.size / 1024).toFixed(1)} KB)</span>
+              </div>
+            `;
+          }
+        }
+
         bubble.innerHTML = `
-          <div style="background: hsla(215, 25%, 38%, 0.25); border: 1px solid var(--border-color); border-radius: 12px 12px 0 12px; padding: 0.75rem 1rem; color: var(--text-primary); white-space: pre-wrap; font-size: 0.98rem; box-shadow: var(--shadow-sm);">${text}</div>
-          <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-secondary); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; user-select: none;">👤</div>
+          <div style="display: flex; gap: 0.75rem; justify-content: flex-end; align-items: flex-start; align-self: flex-end; width: 100%;">
+            <div style="display: flex; flex-direction: column; align-items: flex-end;">
+              <div style="background: hsla(215, 25%, 38%, 0.25); border: 1px solid var(--border-color); border-radius: 12px 12px 0 12px; padding: 0.75rem 1rem; color: var(--text-primary); white-space: pre-wrap; font-size: 0.98rem; box-shadow: var(--shadow-sm); text-align: left;">${text}</div>
+              ${attachmentHtml}
+            </div>
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-secondary); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; user-select: none;">👤</div>
+          </div>
         `;
         chatMessages.appendChild(bubble);
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -1535,7 +1746,7 @@
       // --- unified Q&A Submission Handler (ChatGPT-like) ---
       async function handleSend() {
         const question = chatInput.value.trim();
-        if (!question) return;
+        if (!question && !attachedFile) return;
 
         if (!apiKey) {
           alert("請先設定您的 Gemini API 金鑰！");
@@ -1547,15 +1758,18 @@
         chatInput.disabled = true;
         chatSendBtn.disabled = true;
 
-        // Render user bubble immediately
-        appendUserBubble(question);
+        // Render user bubble immediately with attachment preview
+        appendUserBubble(question || `📎 附帶檔案: ${attachedFile.name}`, attachedFile);
         chatInput.value = "";
+
+        const currentAttachedFile = attachedFile; // Cache locally
+        clearAttachment(); // Clear preview container
 
         // If this is the first turn of a new session, initialize the session
         if (activeSessionId === null) {
           const newId = Date.now().toString();
-          // Create session title based on question snippet
-          const newTitle = question.substring(0, 12) + (question.length > 12 ? "..." : "");
+          const displayQuestion = question || `附帶檔案: ${currentAttachedFile.name}`;
+          const newTitle = displayQuestion.substring(0, 12) + (displayQuestion.length > 12 ? "..." : "");
           const newSession = {
             id: newId,
             title: newTitle,
@@ -1627,8 +1841,42 @@
               `請結合先前的對話歷史與本次檢索文獻，繼續進行法律分析，僅回傳符合上述結構的 JSON 物件：`;
           }
 
+          // Build parts array
+          let parts = [{ text: turnPrompt }];
+          let attachedFileForStorage = null;
+
+          if (currentAttachedFile) {
+            attachedFileForStorage = {
+              name: currentAttachedFile.name,
+              type: currentAttachedFile.type,
+              size: currentAttachedFile.size
+            };
+
+            if (currentAttachedFile.base64) {
+              parts.push({
+                inlineData: {
+                  mimeType: currentAttachedFile.type,
+                  data: currentAttachedFile.base64
+                }
+              });
+              attachedFileForStorage.base64 = currentAttachedFile.base64;
+            } else if (currentAttachedFile.content) {
+              // Inject document content into the text prompt
+              const targetHeader = conversationHistory.length === 0 ? "【使用者諮詢問題】：\n" : "【使用者追問】：\n";
+              parts[0].text = parts[0].text.replace(
+                targetHeader,
+                `【使用者上傳附帶檔案: ${currentAttachedFile.name}】\n(文件文字提取內容)：\n${currentAttachedFile.content}\n\n${targetHeader}`
+              );
+              attachedFileForStorage.content = currentAttachedFile.content;
+            }
+          }
+
           // Add user turn to conversation history
-          conversationHistory.push({ role: "user", parts: [{ text: turnPrompt }] });
+          conversationHistory.push({ 
+            role: "user", 
+            parts: parts, 
+            attachment: attachedFileForStorage 
+          });
 
           // Call Gemini
           const result = await callGeminiWithFallback(apiKey, conversationHistory);
